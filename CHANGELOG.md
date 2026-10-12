@@ -1,5 +1,13 @@
 # mppx
 
+## 0.13.5
+
+### Patch Changes
+
+- 19315c7: Bounded automatic MCP JSON and SSE payment-challenge inspection to 1 MiB while preserving the original response stream for callers.
+- 7271a85: Recovered confirmed Tempo charges when a synchronous broadcast returned an RPC error after inclusion.
+- 74533b0: Required at least 15 seconds of remaining validity before sponsoring and broadcasting transactions.
+
 ## 0.13.4
 
 ### Patch Changes
