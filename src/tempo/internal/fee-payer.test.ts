@@ -239,6 +239,42 @@ describe('validateCalls', () => {
     ).toBe(swapTokenIn)
   })
 
+  test.each([1n, 90n, 100n, 0n, 101n])('bounds sponsored swap output %s', (amountOut) => {
+    const validate = () =>
+      validateCalls(
+        [
+          {
+            to: swapTokenIn,
+            data: encodeFunctionData({
+              abi: Abis.tip20,
+              functionName: 'approve',
+              args: [Addresses.stablecoinDex, 100n],
+            }),
+          },
+          {
+            to: Addresses.stablecoinDex,
+            data: encodeFunctionData({
+              abi: Abis.stablecoinDex,
+              functionName: 'swapExactAmountOut',
+              args: [swapTokenIn, swapTokenOut, amountOut, 100n],
+            }),
+          },
+          {
+            to: swapTokenOut,
+            data: encodeFunctionData({
+              abi: Abis.tip20,
+              functionName: 'transfer',
+              args: [bogus, 100n],
+            }),
+          },
+        ],
+        details,
+        { currency: swapTokenOut, expectedTransfers: [{ amount: '100', recipient: bogus }] },
+      )
+    if (amountOut > 0n && amountOut <= 100n) expect(validate).not.toThrow()
+    else expect(validate).toThrow('swap output must be positive')
+  })
+
   test('error: rejects extra transfers when expected payments are supplied', () => {
     expect(() =>
       validateCalls(

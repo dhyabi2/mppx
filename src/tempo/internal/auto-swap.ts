@@ -26,6 +26,10 @@ export async function findCalls(
   parameters: findCalls.Parameters,
 ): Promise<findCalls.ReturnType> {
   const { account, amountOut, tokenOut, tokenIn, slippage } = parameters
+  if (!Number.isFinite(slippage) || slippage < 0 || slippage > 50)
+    throw new Error('Auto-swap slippage must be between 0 and 50 percent.')
+  if (parameters.maxAmountIn !== undefined && parameters.maxAmountIn <= 0n)
+    throw new Error('Auto-swap maxAmountIn must be positive.')
 
   const candidates = tokenIn.filter((t) => !TempoAddress.isEqual(t, tokenOut))
 
@@ -41,8 +45,13 @@ export async function findCalls(
 
   // If the account already has enough of the target token, no swap needed.
   const targetBalance = balanceResults[0]!
-  if (targetBalance.status === 'fulfilled' && (targetBalance.value as bigint) >= amountOut)
-    return undefined
+  if (targetBalance.status !== 'fulfilled') throw targetBalance.reason
+  const held = targetBalance.value as bigint
+  if (held >= amountOut) return undefined
+  const deficit = amountOut - held
+  const slippageBps = BigInt(Math.round(slippage * 100))
+  // Bound price independently of the DEX quote. Stablecoin units default to parity.
+  const spendLimit = parameters.maxAmountIn ?? deficit + (deficit * slippageBps) / bps
 
   // Find first candidate with enough balance to cover a swap.
   for (let i = 0; i < candidates.length; i++) {
@@ -58,12 +67,13 @@ export async function findCalls(
       const quotedAmountIn = await Actions.dex.getBuyQuote(client as never, {
         tokenIn,
         tokenOut,
-        amountOut,
+        amountOut: deficit,
       })
 
-      if (balance >= quotedAmountIn) {
-        const maxAmountIn =
-          quotedAmountIn + (quotedAmountIn * BigInt(Math.round(slippage * 100))) / bps
+      if (quotedAmountIn <= 0n || quotedAmountIn > spendLimit) continue
+      const quotedLimit = quotedAmountIn + (quotedAmountIn * slippageBps) / bps
+      const maxAmountIn = quotedLimit < spendLimit ? quotedLimit : spendLimit
+      if (balance >= maxAmountIn) {
         return [
           Actions.token.approve.call(client, {
             amount: maxAmountIn,
@@ -73,7 +83,7 @@ export async function findCalls(
           Actions.dex.buy.call({
             tokenIn,
             tokenOut,
-            amountOut,
+            amountOut: deficit,
             maxAmountIn,
           }),
         ]
@@ -92,6 +102,8 @@ export declare namespace findCalls {
     amountOut: bigint
     /** Candidate input tokens to swap from, in priority order. */
     tokenIn: readonly Address[]
+    /** Maximum input-token units to spend. Defaults to the missing output amount plus slippage (1:1 units). */
+    maxAmountIn?: bigint | undefined
     /** Max slippage tolerance as a percentage (e.g. `1` = 1%). */
     slippage: number
     /** Address of the target token to acquire. */
@@ -118,11 +130,14 @@ export function resolve(
   return {
     tokenIn,
     slippage: value.slippage ?? 1,
+    ...(value.maxAmountIn !== undefined ? { maxAmountIn: value.maxAmountIn } : {}),
   }
 }
 
 export declare namespace resolve {
   type Options = {
+    /** Maximum input-token units per swap. Defaults to parity with the missing output amount plus slippage; set explicitly for non-parity pairs. */
+    maxAmountIn?: bigint | undefined
     /** Fallback tokens to try swapping from, in priority order. */
     tokenIn?: Address[] | undefined
     /** Max slippage tolerance as a percentage (e.g. `1` = 1%). @default 1 */
@@ -131,7 +146,11 @@ export declare namespace resolve {
 
   type Value = boolean | Options
 
-  type Resolved = { tokenIn: readonly Address[]; slippage: number }
+  type Resolved = {
+    tokenIn: readonly Address[]
+    slippage: number
+    maxAmountIn?: bigint | undefined
+  }
 }
 
 export class InsufficientFundsError extends Error {

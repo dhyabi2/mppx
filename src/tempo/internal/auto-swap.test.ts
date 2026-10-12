@@ -196,3 +196,60 @@ describe('InsufficientFundsError', () => {
     )
   })
 })
+
+describe('autoswap spend boundaries', () => {
+  test.each([
+    { held: 900n, quote: 100n, expected: 101n },
+    { held: 900n, quote: 101n, expected: 101n },
+    { held: 900n, quote: 102n, expected: undefined },
+    { held: 900n, quote: 500n, cap: 600n, expected: 505n },
+    { held: 900n, quote: 500n, cap: 499n, expected: undefined },
+    { held: 900n, quote: 0n, expected: undefined },
+    { held: 900n, quote: 100n, balance: 100n, expected: undefined },
+  ])('bounds quote case $#', async ({ held, quote, cap, balance, expected }) => {
+    vi.resetModules()
+    const tokenIn = '0x0000000000000000000000000000000000000001' as Address
+    const tokenOut = '0x0000000000000000000000000000000000000002' as Address
+    const getBuyQuote = vi.fn(async () => quote)
+    vi.doMock('viem/actions', () => ({
+      readContract: vi.fn(async (_, call) =>
+        call.token === tokenOut ? held : (balance ?? 10000n),
+      ),
+    }))
+    vi.doMock('viem/tempo', () => ({
+      Addresses: { stablecoinDex: tokenIn },
+      Actions: {
+        token: {
+          getBalance: { call: (_: unknown, args: Record<string, unknown>) => args },
+          approve: { call: (_: unknown, args: Record<string, unknown>) => args },
+        },
+        dex: { getBuyQuote, buy: { call: (args: Record<string, unknown>) => args } },
+      },
+    }))
+    try {
+      const { findCalls } = await import('./auto-swap.js')
+      const result = findCalls({} as never, {
+        account: tokenIn,
+        amountOut: 1000n,
+        tokenIn: [tokenIn],
+        tokenOut,
+        slippage: 1,
+        maxAmountIn: cap,
+      })
+      if (expected === undefined) await expect(result).rejects.toThrow()
+      else {
+        const calls = await result
+        expect(calls?.[0]).toMatchObject({ amount: expected })
+        expect(calls?.[1]).toMatchObject({ amountOut: 100n, maxAmountIn: expected })
+      }
+      expect(getBuyQuote).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ amountOut: 100n }),
+      )
+    } finally {
+      vi.doUnmock('viem/actions')
+      vi.doUnmock('viem/tempo')
+      vi.resetModules()
+    }
+  })
+})

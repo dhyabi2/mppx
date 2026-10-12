@@ -709,6 +709,7 @@ async function resolveAutoSwapCalls(
     tokenOut: parameters.tokenOut,
     tokenIn: autoSwap.tokenIn,
     slippage: autoSwap.slippage,
+    maxAmountIn: autoSwap.maxAmountIn,
   })) as readonly TempoChannelCall[] | undefined
 }
 

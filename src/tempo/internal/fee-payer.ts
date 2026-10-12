@@ -533,8 +533,11 @@ export function validateCalls(
     )
     if (!TempoAddress_internal.isEqual(tokenOut, currency))
       throw new FeePayerValidationError('swap tokenOut does not match payment currency', details)
-    if (amountOut !== expectedAmountOut)
-      throw new FeePayerValidationError('swap output does not match payment amount', details)
+    if (amountOut <= 0n || amountOut > expectedAmountOut)
+      throw new FeePayerValidationError(
+        'swap output must be positive and no greater than payment amount',
+        details,
+      )
   }
 
   const transferCalls = calls.slice(hasSwapPrefix ? 2 : 0)
