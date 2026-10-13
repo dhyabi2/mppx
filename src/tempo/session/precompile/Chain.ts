@@ -502,7 +502,8 @@ function validateAutoSwapPrefix(parameters: {
   if (!isAddressEqual(spender, Addresses.stablecoinDex)) fail('approval spender is not the DEX')
   if (approvedAmount !== maxAmountIn) fail('approval amount does not match swap maximum input')
   if (!isAddressEqual(tokenOut, currency)) fail('output token does not match channel currency')
-  if (swapAmountOut !== amountOut) fail('output amount does not match channel deposit')
+  if (swapAmountOut <= 0n || swapAmountOut > amountOut)
+    fail('output amount must be positive and not exceed channel deposit')
   if (isAddressEqual(tokenIn, tokenOut)) fail('input and output tokens must differ')
 
   const canonicalApprove = encodeFunctionData({

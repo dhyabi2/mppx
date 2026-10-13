@@ -694,12 +694,17 @@ describe('precompile broadcastOpenTransaction', () => {
       reason: 'output token does not match channel currency',
     },
     {
+      name: 'zero output amount',
+      prefixCalls: [validApprove, swap({ amountOut: 0n })],
+      reason: 'output amount must be positive and not exceed channel deposit',
+    },
+    {
       name: 'output amount mismatch',
       prefixCalls: [
         approve({ amount: maxAmountIn + 1n }),
         swap({ amountOut: deposit + 1n, maxAmount: maxAmountIn + 1n }),
       ],
-      reason: 'output amount does not match channel deposit',
+      reason: 'output amount must be positive and not exceed channel deposit',
     },
     {
       name: 'identical input and output tokens',
@@ -1127,42 +1132,47 @@ describe('precompile broadcastOpenTransaction', () => {
     ).rejects.toThrow('credential expiringNonceHash does not match transaction')
   })
 
-  test('accepts an exact-output auto-swap before open', async () => {
-    const serializedTransaction = await createOpenTransaction({ prefixCalls: autoSwapCalls() })
-    const expiringNonceHash = expectedExpiringNonceHash(serializedTransaction)
-    const expectedDescriptor = { ...descriptor, expiringNonceHash }
-    const channelId = Channel.computeId({
-      ...expectedDescriptor,
-      chainId,
-      escrow: tip20ChannelEscrow,
-    })
-    const state = { settled: 0n, deposit, closeRequestedAt: 0 }
+  test.each([deposit, deposit / 2n, 1n])(
+    'accepts an auto-swap of %s before open',
+    async (amountOut) => {
+      const serializedTransaction = await createOpenTransaction({
+        prefixCalls: autoSwapCalls(amountOut),
+      })
+      const expiringNonceHash = expectedExpiringNonceHash(serializedTransaction)
+      const expectedDescriptor = { ...descriptor, expiringNonceHash }
+      const channelId = Channel.computeId({
+        ...expectedDescriptor,
+        chainId,
+        escrow: tip20ChannelEscrow,
+      })
+      const state = { settled: 0n, deposit, closeRequestedAt: 0 }
 
-    const result = await Chain.broadcastOpenTransaction({
-      chainId,
-      client: createMockClient({
-        channel: { descriptor: expectedDescriptor, state },
-        receipt: receipt([openedLog({ channelId, expiringNonceHash })]),
-      }),
-      escrowContract: tip20ChannelEscrow,
-      expectedAuthorizedSigner: descriptor.authorizedSigner,
-      expectedChannelId: channelId,
-      expectedCurrency: descriptor.token,
-      expectedExpiringNonceHash: expiringNonceHash,
-      expectedOperator: descriptor.operator,
-      expectedPayee: descriptor.payee,
-      expectedPayer: descriptor.payer,
-      serializedTransaction,
-    })
+      const result = await Chain.broadcastOpenTransaction({
+        chainId,
+        client: createMockClient({
+          channel: { descriptor: expectedDescriptor, state },
+          receipt: receipt([openedLog({ channelId, expiringNonceHash })]),
+        }),
+        escrowContract: tip20ChannelEscrow,
+        expectedAuthorizedSigner: descriptor.authorizedSigner,
+        expectedChannelId: channelId,
+        expectedCurrency: descriptor.token,
+        expectedExpiringNonceHash: expiringNonceHash,
+        expectedOperator: descriptor.operator,
+        expectedPayee: descriptor.payee,
+        expectedPayer: descriptor.payer,
+        serializedTransaction,
+      })
 
-    expect(result).toEqual({
-      txHash,
-      descriptor: expectedDescriptor,
-      state,
-      expiringNonceHash,
-      openDeposit: deposit,
-    })
-  })
+      expect(result).toEqual({
+        txHash,
+        descriptor: expectedDescriptor,
+        state,
+        expiringNonceHash,
+        openDeposit: deposit,
+      })
+    },
+  )
 
   test('pins the read-back to the block that included the open transaction', async () => {
     const serializedTransaction = await createOpenTransaction()
@@ -1439,28 +1449,33 @@ describe('precompile broadcastTopUpTransaction', () => {
     ).rejects.toThrow('topUp deposit does not match credential')
   })
 
-  test('accepts an exact-output auto-swap before top-up', async () => {
-    const serializedTransaction = await createTopUpTransaction({ prefixCalls: autoSwapCalls() })
-    const channelId = Channel.computeId({ ...descriptor, chainId, escrow: tip20ChannelEscrow })
-    const newDeposit = deposit * 2n
-    const state = { settled: 0n, deposit: newDeposit, closeRequestedAt: 0 }
+  test.each([deposit, deposit / 2n, 1n])(
+    'accepts an auto-swap of %s before top-up',
+    async (amountOut) => {
+      const serializedTransaction = await createTopUpTransaction({
+        prefixCalls: autoSwapCalls(amountOut),
+      })
+      const channelId = Channel.computeId({ ...descriptor, chainId, escrow: tip20ChannelEscrow })
+      const newDeposit = deposit * 2n
+      const state = { settled: 0n, deposit: newDeposit, closeRequestedAt: 0 }
 
-    const result = await Chain.broadcastTopUpTransaction({
-      additionalDeposit: deposit,
-      chainId,
-      client: createMockClient({
-        channel: { descriptor, state },
-        receipt: receipt([topUpLog({ channelId, newDeposit })]),
-      }),
-      descriptor,
-      escrowContract: tip20ChannelEscrow,
-      expectedChannelId: channelId,
-      expectedCurrency: descriptor.token,
-      serializedTransaction,
-    })
+      const result = await Chain.broadcastTopUpTransaction({
+        additionalDeposit: deposit,
+        chainId,
+        client: createMockClient({
+          channel: { descriptor, state },
+          receipt: receipt([topUpLog({ channelId, newDeposit })]),
+        }),
+        descriptor,
+        escrowContract: tip20ChannelEscrow,
+        expectedChannelId: channelId,
+        expectedCurrency: descriptor.token,
+        serializedTransaction,
+      })
 
-    expect(result).toEqual({ txHash, newDeposit, state })
-  })
+      expect(result).toEqual({ txHash, newDeposit, state })
+    },
+  )
 
   test('rejects top-up receipt/readback deposit mismatches', async () => {
     const serializedTransaction = await createTopUpTransaction()
