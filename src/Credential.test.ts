@@ -391,3 +391,32 @@ describe('fromRequest', () => {
     expect(() => Credential.fromRequest(request)).toThrow('Missing Payment scheme.')
   })
 })
+
+describe('authorization size limits', () => {
+  test.each([
+    'Bearer ' + 'a'.repeat(16 * 1024) + ', Payment abc',
+    'Basic a,'.repeat(16 * 1024),
+    ' '.repeat(16 * 1024) + 'Payment abc',
+    'Payment ' + 'a'.repeat(16 * 1024),
+  ])('rejects oversized input before extraction or decoding', (header) => {
+    expect(Credential.extractPaymentScheme(header)).toBeNull()
+    expect(() => Credential.deserialize(header)).toThrow(Credential.InvalidCredentialEncodingError)
+    expect(() =>
+      Credential.fromRequest(
+        new Request('https://example.com', {
+          headers: { Authorization: header },
+        }),
+      ),
+    ).toThrow()
+  })
+  test('accepts a credential at the limit', () => {
+    const prefix = Credential.serialize(
+      Credential.from({ challenge, payload: { type: 'hash', hash: '0x1' } }),
+    )
+    const json = Base64.toString(prefix.slice('Payment '.length)).padEnd(12282, ' ')
+    const header = 'Payment ' + Base64.fromString(json, { url: true, pad: false })
+    expect(header).toHaveLength(16 * 1024)
+    expect(Credential.extractPaymentScheme(header)).toBe(header)
+    expect(Credential.deserialize(header).challenge).toEqual(challenge)
+  })
+})
