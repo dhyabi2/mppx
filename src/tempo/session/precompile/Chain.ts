@@ -869,6 +869,7 @@ export async function sendCredentialTransaction(parameters: SendCredentialTransa
       client,
       FeePayer.simulationTransaction(transaction, { feePayer: true }),
     )
+    FeePayer.assertRemainingValidity({ transaction, details })
     const txHash = await sendTransaction(client, serializedTransaction)
     return waitForSuccessfulReceipt(client, txHash)
   }

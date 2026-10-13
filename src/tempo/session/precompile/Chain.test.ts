@@ -972,6 +972,38 @@ describe('precompile broadcastOpenTransaction', () => {
     }
   })
 
+  test('rejects hosted sponsorship when simulation consumes the deadline', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      const serializedTransaction = await createOpenTransaction({ gas: 100_000n, signed: true })
+      const transaction = Transaction.deserialize(
+        serializedTransaction as Transaction.TransactionSerializedTempo,
+      )
+      const rpcMethods: string[] = []
+      await expect(
+        Chain.sendCredentialTransaction({
+          chainId,
+          client: createMockClient({
+            rpcMethods,
+            onRequest(method) {
+              if (method === 'eth_call')
+                vi.setSystemTime((Number(transaction.validBefore) - 14) * 1_000)
+            },
+          }),
+          details: {},
+          feePayer: true,
+          label: 'open',
+          serializedTransaction,
+          transaction,
+        }),
+      ).rejects.toThrow('at least 15 seconds')
+      expect(rpcMethods).not.toContain('eth_sendRawTransaction')
+      expect(rpcMethods).not.toContain('eth_sendRawTransactionSync')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   test('hosted fee-payer relays a sender-signed open without local co-signing', async () => {
     const rpcMethods: string[] = []
     const serializedTransaction = await createOpenTransaction({ gas: 100_000n, signed: true })
