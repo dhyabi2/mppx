@@ -4,7 +4,8 @@ import * as Challenge from './Challenge.js'
 import * as Constants from './Constants.js'
 import * as PaymentRequest from './PaymentRequest.js'
 
-const maxAuthorizationLength = 16 * 1024
+// Allow the echoed challenge and payment payload to expand during JSON/base64 encoding.
+const maxAuthorizationLength = 64 * 1024
 
 /**
  * A payment credential containing the challenge and payment proof.
@@ -47,7 +48,7 @@ export class InvalidCredentialEncodingError extends Error {
 
 /**
  * Deserializes a Payment credential header value to a credential.
- * Rejects values longer than 16 KiB before decoding.
+ * Rejects values longer than 64 KiB before decoding.
  * Accepts the spec-compliant base64url `opaque` string shape and the legacy
  * object-shaped `opaque` form emitted by older mppx versions.
  *
@@ -222,7 +223,7 @@ export function serialize(credential: Credential): string {
  * Extracts the `Payment` scheme from an Authorization header value
  * that may contain multiple schemes (comma-separated per RFC 9110).
  *
- * Values longer than 16 KiB are rejected before splitting.
+ * Values longer than 64 KiB are rejected before splitting.
  *
  * @param header - The raw Authorization header value.
  * @returns The `Payment ...` scheme string, or `null` if not found.
