@@ -15,7 +15,7 @@ import { privateKeyToAccount } from 'viem/accounts'
 import { prepareTransactionRequest } from 'viem/actions'
 import { Abis, Addresses, Transaction } from 'viem/tempo'
 import { tempo } from 'viem/tempo/chains'
-import { describe, expect, test } from 'vp/test'
+import { describe, expect, test, vi } from 'vp/test'
 
 import { VerificationFailedError } from '../../../Errors.js'
 import * as ServerChannelOps from '../server/ChannelOps.js'
@@ -932,6 +932,44 @@ describe('precompile broadcastOpenTransaction', () => {
     expect(
       rpcMethods.slice(0, broadcastIndex).filter((method) => method === 'eth_call'),
     ).toHaveLength(2)
+  })
+
+  test.each(['simulation', 'signing'])('rejects a deadline consumed during %s', async (stage) => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      const serializedTransaction = await createOpenTransaction({ gas: 100_000n, signed: true })
+      const transaction = Transaction.deserialize(
+        serializedTransaction as Transaction.TransactionSerializedTempo,
+      )
+      const rpcMethods: string[] = []
+      let simulations = 0
+      const expire = () => vi.setSystemTime((Number(transaction.validBefore) - 14) * 1_000)
+      const sign = vi.fn(async () => {
+        if (stage === 'signing') expire()
+        return `0x76${'00'.repeat(32)}` as Hex
+      })
+      await expect(
+        Chain.sendCredentialTransaction({
+          chainId,
+          client: createMockClient({
+            rpcMethods,
+            onRequest(method) {
+              if (method === 'eth_call' && ++simulations === 2 && stage === 'simulation') expire()
+            },
+          }),
+          details: {},
+          feePayer: { ...feePayer, signTransaction: sign },
+          label: 'open',
+          serializedTransaction,
+          transaction,
+        }),
+      ).rejects.toThrow('at least 15 seconds')
+      expect(sign).toHaveBeenCalledTimes(stage === 'signing' ? 1 : 0)
+      expect(rpcMethods).not.toContain('eth_sendRawTransactionSync')
+      expect(rpcMethods).not.toContain('eth_sendRawTransaction')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   test('hosted fee-payer relays a sender-signed open without local co-signing', async () => {

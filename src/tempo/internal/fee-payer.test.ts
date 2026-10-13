@@ -1002,6 +1002,36 @@ describe('prepareSponsoredTransaction', () => {
     else expect(validate).toThrow('at least 15 seconds')
   })
 
+  test.each([0, 1, 999])('accepts a 15-second maximum at millisecond offset %i', (offset) => {
+    const now = new Date(2_000_000_000_000 + offset)
+    expect(() =>
+      assertTransactionPolicy({
+        chainId: 42431,
+        details,
+        now,
+        policy: { maxValidityWindowSeconds: 15 },
+        transaction: {
+          ...baseTransaction,
+          validBefore: Math.ceil(now.getTime() / 1_000) + 15,
+        } as any,
+      }),
+    ).not.toThrow()
+  })
+
+  test.each([0, 14, 14.5, NaN, Infinity])(
+    'rejects an incompatible maximum window %s',
+    (maximum) => {
+      expect(() =>
+        assertTransactionPolicy({
+          chainId: 42431,
+          details,
+          policy: { maxValidityWindowSeconds: maximum },
+          transaction: baseTransaction as any,
+        }),
+      ).toThrow('maxValidityWindowSeconds must be an integer of at least 15 seconds')
+    },
+  )
+
   test('accepts bounded sponsored transaction fields', () => {
     expect(() =>
       prepareSponsoredTransaction({

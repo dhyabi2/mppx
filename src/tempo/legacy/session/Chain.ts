@@ -652,7 +652,10 @@ export async function broadcastOpenTransaction(
           return { feePayer: feePayer.address, transaction: sponsored }
         },
       })
-      return signTransaction(client, completed.transaction as never)
+      FeePayer.assertRemainingValidity({ transaction: completed.transaction })
+      const serialized = await signTransaction(client, completed.transaction as never)
+      FeePayer.assertRemainingValidity({ transaction: completed.transaction })
+      return serialized
     }
     return serializedTransaction
   }
@@ -805,7 +808,10 @@ export async function broadcastTopUpTransaction(
           return { feePayer: feePayer.address, transaction: sponsored }
         },
       })
-      return signTransaction(client, completed.transaction as never)
+      FeePayer.assertRemainingValidity({ transaction: completed.transaction })
+      const serialized = await signTransaction(client, completed.transaction as never)
+      FeePayer.assertRemainingValidity({ transaction: completed.transaction })
+      return serialized
     }
     return serializedTransaction
   })()

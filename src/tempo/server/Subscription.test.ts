@@ -13,7 +13,7 @@ import {
 import { privateKeyToAccount } from 'viem/accounts'
 import { Abis, Transaction } from 'viem/tempo'
 import { tempo as tempo_chain } from 'viem/tempo/chains'
-import { describe, expect, test } from 'vp/test'
+import { describe, expect, test, vi } from 'vp/test'
 
 import * as Store from '../../Store.js'
 import { tokens } from '../internal/defaults.js'
@@ -120,6 +120,7 @@ function createBillingClient(
   hashes: readonly string[],
   options: {
     account?: typeof rootAccount
+    afterSimulation?: ((request: Record<string, unknown>) => void) | undefined
     failSimulation?: number | undefined
     feeToken?: Address | undefined
   } = {},
@@ -143,6 +144,7 @@ function createBillingClient(
           callRequests.push((params as [Record<string, unknown>])[0])
           if (options.failSimulation !== undefined && ++simulations >= options.failSimulation)
             throw new Error('final sponsored simulation reverted')
+          options.afterSimulation?.((params as [Record<string, unknown>])[0])
           return '0x'
         }
         if (method === 'eth_sendRawTransaction') return hashes[nextHash++] ?? hashActivate
@@ -154,6 +156,7 @@ function createBillingClient(
 }
 
 async function activateFeeSponsoredSubscription(options?: {
+  afterSimulation?: ((request: Record<string, unknown>) => void) | undefined
   failSimulation?: number | undefined
   feeToken?: Address | undefined
 }) {
@@ -322,6 +325,22 @@ describe('tempo.subscription', () => {
     expect(callRequests.length).toBeGreaterThanOrEqual(2)
     expect(rpcMethods).not.toContain('eth_sendRawTransaction')
     expect(rpcMethods).not.toContain('eth_sendRawTransactionSync')
+  })
+
+  test('does not broadcast when final simulation consumes the sponsorship deadline', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      const { result, rpcMethods } = await activateFeeSponsoredSubscription({
+        afterSimulation(request) {
+          if (request.feePayer) vi.setSystemTime((Number(request.validBefore) - 14) * 1_000)
+        },
+      })
+      expect(result.status).not.toBe(200)
+      expect(rpcMethods).not.toContain('eth_sendRawTransaction')
+      expect(rpcMethods).not.toContain('eth_sendRawTransactionSync')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   test('stores an activated subscription and reuses it on later requests', async () => {

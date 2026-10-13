@@ -582,6 +582,25 @@ export function validateCalls(
   return approveCall?.to ?? currency
 }
 
+/** Rejects transactions that can expire before sponsorship and submission finish. */
+export function assertRemainingValidity(parameters: {
+  details?: Record<string, string> | undefined
+  now?: Date | undefined
+  transaction: { validBefore?: number | undefined }
+}) {
+  const { details = {}, now = new Date(), transaction } = parameters
+  const { validBefore } = transaction
+  const fail = (reason: string): never => {
+    throw new FeePayerValidationError(reason, { ...details, validBefore: String(validBefore) })
+  }
+  if (validBefore === undefined)
+    return fail('fee-sponsored transaction must declare validBefore for the expiring nonce')
+  if (validBefore <= Math.floor(now.getTime() / 1_000))
+    fail('fee-sponsored transaction has already expired')
+  if (validBefore < Math.ceil(now.getTime() / 1_000) + 15)
+    fail('fee-sponsored transaction needs at least 15 seconds of remaining validity')
+}
+
 /** Validates sponsor fee policy limits for a fee-payer transaction. */
 export function assertTransactionPolicy(parameters: {
   challengeExpires?: string | undefined
@@ -665,22 +684,15 @@ export function assertTransactionPolicy(parameters: {
     fail('fee-sponsored transaction must declare validBefore for the expiring nonce')
   const validBeforeValue = validBefore
 
-  const nowSeconds = Math.floor(now.getTime() / 1_000)
-  if (validBeforeValue <= nowSeconds)
-    fail('fee-sponsored transaction has already expired', {
-      validBefore: String(validBeforeValue),
-    })
-
-  if (validBeforeValue < Math.ceil(now.getTime() / 1_000) + 15)
-    fail('fee-sponsored transaction needs at least 15 seconds of remaining validity', {
-      validBefore: String(validBeforeValue),
-    })
+  if (!Number.isInteger(policy.maxValidityWindowSeconds) || policy.maxValidityWindowSeconds < 15)
+    fail('sponsor maxValidityWindowSeconds must be an integer of at least 15 seconds')
+  assertRemainingValidity({ transaction, details, now })
 
   const challengeExpirySeconds = challengeExpires
     ? Math.floor(new Date(challengeExpires).getTime() / 1_000)
     : undefined
   const maxValidBefore = Math.min(
-    nowSeconds + policy.maxValidityWindowSeconds,
+    Math.ceil(now.getTime() / 1_000) + policy.maxValidityWindowSeconds,
     challengeExpirySeconds ? challengeExpirySeconds + 60 : Number.MAX_SAFE_INTEGER,
   )
   if (validBeforeValue > maxValidBefore)
