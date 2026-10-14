@@ -221,6 +221,21 @@
       "types": "./dist/x402/mcp.d.ts",
       "default": "./dist/x402/mcp.js"
     },
+    "./nano": {
+      "src": "./src/nano/index.ts",
+      "types": "./dist/nano/index.d.ts",
+      "default": "./dist/nano/index.js"
+    },
+    "./nano/client": {
+      "src": "./src/nano/client/index.ts",
+      "types": "./dist/nano/client/index.d.ts",
+      "default": "./dist/nano/client/index.js"
+    },
+    "./nano/server": {
+      "src": "./src/nano/server/index.ts",
+      "types": "./dist/nano/server/index.d.ts",
+      "default": "./dist/nano/server/index.js"
+    },
     "./tempo": {
       "src": "./src/tempo/index.ts",
       "types": "./dist/tempo/index.d.ts",
@@ -313,6 +328,7 @@
     }
   },
   "dependencies": {
+    "@noble/hashes": "1.8.0",
     "@stripe/stripe-js": "9.17.0",
     "eventsource-parser": "4.1.1",
     "ox": "catalog:",
