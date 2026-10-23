@@ -58,6 +58,9 @@ importers:
 
   .:
     dependencies:
+      '@noble/hashes':
+        specifier: 1.8.0
+        version: 1.8.0
       '@stripe/stripe-js':
         specifier: 9.17.0
         version: 9.17.0
